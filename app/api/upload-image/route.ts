@@ -8,10 +8,10 @@ import { NextResponse } from "next/server";
 export async function POST(req: NextApiRequest, res: NextApiResponse) {
   try {
     const client = new S3Client({
-      region: process.env.AWS_REGION!,
+      region: process.env.AWS_API_REGION!,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY!,
-        secretAccessKey: process.env.AWS_SECRET_KEY!,
+        accessKeyId: process.env.AWS_API_ACCESS_KEY!,
+        secretAccessKey: process.env.AWS_API_SECRET_KEY!,
       },
     });
 
