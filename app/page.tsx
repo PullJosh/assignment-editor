@@ -18,9 +18,9 @@ export default function Page() {
               <span className="text-amber-800">Effortlessly.</span>
             </h1>
             <p className="text-xl text-black">
-              Don't waste hours of your week battling with Microsoft Word or
-              Google Docs. Instead, create beautiful assignments and quizzes in
-              no time with an editor designed specifically for teachers.
+              Don&apos;t waste hours of your week battling with Microsoft Word
+              or Google Docs. Instead, create beautiful assignments and quizzes
+              in no time with an editor designed specifically for teachers.
             </p>
             <div className="mt-8">
               <Link
