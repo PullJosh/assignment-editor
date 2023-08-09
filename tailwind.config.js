@@ -6,7 +6,9 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    fontFamily: {
+      times: ["Times New Roman", "serif"],
+    },
   },
-  plugins: [],
+  plugins: [require("@tailwindcss/typography")],
 };

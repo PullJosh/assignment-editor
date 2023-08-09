@@ -7,8 +7,10 @@ import {
   useEffect,
   useCallback,
   useImperativeHandle,
+  Dispatch,
+  SetStateAction,
+  Fragment,
 } from "react";
-import Head from "next/head";
 
 import { useReactToPrint } from "react-to-print";
 
@@ -18,6 +20,8 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 
+import { Dialog } from "@headlessui/react";
+
 import "katex/dist/katex.min.css";
 
 import {
@@ -26,6 +30,11 @@ import {
   Draggable,
   resetServerContext,
 } from "react-beautiful-dnd";
+import { FileSelectionList } from "./FileSelectionList";
+import { useRouter } from "next/navigation";
+
+import { v4 as uuidv4 } from "uuid";
+import type { ReactMarkdownOptions } from "react-markdown/lib/react-markdown";
 
 resetServerContext();
 
@@ -33,13 +42,13 @@ type ItemQuestionAnswer =
   | { type: "freeResponse"; answer: string }
   | { type: "multipleChoice"; choices: string[]; correctChoice: number };
 
-type Item = { id: string } & (
+export type Item = { id: string } & (
   | {
       type: "documentHeader";
       title: string;
       subtitle: string;
-      nameBlankStyle: "none" | "line" | "box";
-      nameBlankLabel: string;
+      blanks: { label: string; style: "line" | "box" }[];
+      layout: "left" | "center";
     }
   | {
       type: "question";
@@ -48,21 +57,6 @@ type Item = { id: string } & (
       workHeight: string;
       starred: boolean;
     }
-  // | {
-  //     type: "freeResponse";
-  //     content: string;
-  //     answer: string;
-  //     workHeight: string;
-  //     starred: boolean;
-  //   }
-  // | {
-  //     type: "multipleChoice";
-  //     content: string;
-  //     choices: string[];
-  //     correctChoice: number;
-  //     workHeight: string;
-  //     starred: boolean;
-  //   }
   | {
       type: "text";
       content: string;
@@ -77,8 +71,8 @@ const defaultItems: {
     type: "documentHeader",
     title: "Homework 1.1",
     subtitle: "Good luck and have fun!",
-    nameBlankStyle: "line",
-    nameBlankLabel: "Name:",
+    blanks: [{ label: "Name:", style: "line" }],
+    layout: "left",
   },
   question: {
     type: "question",
@@ -87,21 +81,6 @@ const defaultItems: {
     workHeight: "100",
     starred: false,
   },
-  // freeResponse: {
-  //   type: "freeResponse",
-  //   content: "",
-  //   answer: "",
-  //   workHeight: "100",
-  //   starred: false,
-  // },
-  // multipleChoice: {
-  //   type: "multipleChoice",
-  //   content: "",
-  //   choices: ["", "", "", ""],
-  //   correctChoice: 0,
-  //   workHeight: "100",
-  //   starred: false,
-  // },
   text: {
     type: "text",
     content: "",
@@ -109,13 +88,13 @@ const defaultItems: {
   },
 };
 
-interface Content {
+export interface Content {
   items: Item[];
 }
 
 interface AssignmentEditorProps {
-  defaultContent?: Content;
-  saveContent?: (content: Content) => Promise<boolean>;
+  content: Content;
+  setContent: Dispatch<SetStateAction<Content>>;
 }
 
 export interface AssignmentEditorRef {
@@ -124,21 +103,16 @@ export interface AssignmentEditorRef {
   print: () => void;
 }
 
-const uid = () => {
-  return String(Math.random().toString(36).substr(2, 10));
-};
-
 const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
-  function AssignmentEditor(
-    {
-      defaultContent = {
-        items: [],
-      },
-      saveContent,
-    },
-    ref
-  ) {
-    const [items, setItems] = useState<Item[]>(defaultContent.items);
+  function AssignmentEditor({ content, setContent }, ref) {
+    const items = content.items;
+    const setItems = (items: Item[] | ((oldItems: Item[]) => Item[])) => {
+      setContent((content) => ({
+        ...content,
+        items: typeof items === "function" ? items(content.items) : items,
+      }));
+    };
+
     const setItem = (index: number, item: Item | ((oldItem: Item) => Item)) => {
       setItems((items) => [
         ...items.slice(0, index),
@@ -148,7 +122,7 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
     };
 
     const addItem = (type: Item["type"], index = items.length) => {
-      const newItem: Item = { id: uid(), ...defaultItems[type] };
+      const newItem: Item = { id: uuidv4(), ...defaultItems[type] };
       setItems([...items.slice(0, index), newItem, ...items.slice(index)]);
     };
 
@@ -228,17 +202,9 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
       };
     });
 
-    const [saving, setSaving] = useState(false);
+    const [loadModalOpen, setLoadModalOpen] = useState(false);
 
     const save = useCallback(async () => {
-      if (saveContent) {
-        setSaving(true);
-        saveContent({ items }).then(() => {
-          setSaving(false);
-        });
-        return;
-      }
-
       const fileContent = JSON.stringify({ items }, null, 2);
 
       try {
@@ -258,27 +224,29 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
         await writable.write(fileContent);
         await writable.close();
       } catch (error) {}
-    }, [items, saveContent]);
+    }, [items]);
 
     const load = useCallback(async () => {
-      try {
-        // @ts-expect-error showOpenFilePicker is not yet in the TS types
-        const [fileHandle] = await showOpenFilePicker({
-          types: [
-            {
-              description: "Quiz Files",
-              accept: {
-                "application/json": [".json"],
-              },
-            },
-          ],
-        });
-        const file = await fileHandle.getFile();
-        const fileContent = await file.text();
-        const values = JSON.parse(fileContent);
+      setLoadModalOpen(true);
 
-        setItems(values.items);
-      } catch (error) {}
+      // try {
+      //   // @ts-expect-error showOpenFilePicker is not yet in the TS types
+      //   const [fileHandle] = await showOpenFilePicker({
+      //     types: [
+      //       {
+      //         description: "Quiz Files",
+      //         accept: {
+      //           "application/json": [".json"],
+      //         },
+      //       },
+      //     ],
+      //   });
+      //   const file = await fileHandle.getFile();
+      //   const fileContent = await file.text();
+      //   const values = JSON.parse(fileContent);
+
+      //   setItems(values.items);
+      // } catch (error) {}
     }, []);
 
     useImperativeHandle(
@@ -290,6 +258,10 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
       }),
       [print, load, save]
     );
+
+    const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+
+    const router = useRouter();
 
     return (
       <div className="w-full h-full overflow-hidden grid grid-cols-2 grid-rows-1">
@@ -394,24 +366,6 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
               Add text
             </button>
 
-            {/* <button
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-              onClick={() => {
-                addItem("freeResponse");
-              }}
-            >
-              Add question
-            </button>
-
-            <button
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-              onClick={() => {
-                addItem("multipleChoice");
-              }}
-            >
-              Add MC
-            </button> */}
-
             <button
               className="bg-gray-600 text-white px-4 py-2 rounded"
               onClick={() => {
@@ -441,6 +395,66 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
             <AssignmentPreview ref={printPreview} items={items} />
           </div>
         </div>
+        <Dialog
+          open={loadModalOpen}
+          onClose={() => {
+            setLoadModalOpen(false);
+            setSelectedFileId(null);
+          }}
+          className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50"
+        >
+          <Dialog.Panel className="flex-col bg-white rounded shadow-2xl w-full max-w-md">
+            <div className="p-4">
+              <Dialog.Title className="font-bold text-2xl">
+                Open File
+              </Dialog.Title>
+              <Dialog.Description>
+                This will overwrite your current assignment.
+              </Dialog.Description>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto flex-auto">
+              <FileSelectionList
+                selectedId={selectedFileId}
+                onChange={(id) => {
+                  setSelectedFileId(id);
+                }}
+              />
+            </div>
+
+            <div className="flex justify-between p-4">
+              <button
+                className="mr-4 bg-gray-100 px-4 py-2 rounded hover:bg-gray-200 active:bg-gray-300"
+                onClick={() => {
+                  setLoadModalOpen(false);
+                  setSelectedFileId(null);
+                }}
+              >
+                Upload from computer
+              </button>
+              <div className="space-x-2">
+                <button
+                  className="mr-auto bg-gray-100 px-4 py-2 rounded hover:bg-gray-200 active:bg-gray-300"
+                  onClick={() => {
+                    setLoadModalOpen(false);
+                    setSelectedFileId(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="mr-auto bg-amber-600 px-4 py-2 rounded text-white enabled:hover:bg-amber-700 enabled:active:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    router.push(`/app/assignment/${selectedFileId}`);
+                  }}
+                  disabled={selectedFileId === null}
+                >
+                  Open
+                </button>
+              </div>
+            </div>
+          </Dialog.Panel>
+        </Dialog>
       </div>
     );
   }
@@ -499,42 +513,113 @@ function ItemEditor({
                     setItem({ ...item, subtitle: event.target.value });
                   }}
                 />
-              </div>
-              <div className="flex space-x-1">
-                <label className="flex space-x-2">
-                  <span className="font-medium self-center">Name blank:</span>
-                  <select
-                    value={item.nameBlankStyle}
-                    onChange={(event) => {
-                      setItem({
-                        ...item,
-                        nameBlankStyle: event.target.value as any,
-                      });
-                    }}
-                    className="border rounded px-2 py-1"
-                  >
-                    <option value="none">None</option>
-                    <option value="line">Line</option>
-                    <option value="box">Box</option>
-                  </select>
-                </label>
-                {item.nameBlankStyle !== "none" && (
-                  <label className="flex items-baseline">
-                    <span className="sr-only">Name blank label:</span>
+                <div className="space-x-2">
+                  <label className="space-x-1">
                     <input
-                      type="text"
-                      className="border rounded px-2 py-1 flex-grow"
-                      placeholder="Name:"
-                      value={item.nameBlankLabel}
-                      onChange={(event) => {
-                        setItem({
-                          ...item,
-                          nameBlankLabel: event.target.value,
-                        });
-                      }}
+                      type="radio"
+                      value="left"
+                      checked={item.layout === "left"}
+                      onChange={(event) =>
+                        setItem({ ...item, layout: event.target.value as any })
+                      }
                     />
+                    <span>Left</span>
                   </label>
+                  <label className="space-x-1">
+                    <input
+                      type="radio"
+                      value="center"
+                      checked={item.layout === "center"}
+                      onChange={(event) =>
+                        setItem({ ...item, layout: event.target.value as any })
+                      }
+                    />
+                    <span>Center</span>
+                  </label>
+                </div>
+              </div>
+              <div className="mt-2 space-y-1">
+                <div className="font-medium self-center">
+                  Information blanks:
+                </div>
+                {item.blanks.length === 0 && (
+                  <div className="text-gray-500 text-sm italic">
+                    No information blanks
+                  </div>
                 )}
+                <ol className="space-y-1">
+                  {item.blanks.map((blank, index) => (
+                    <li key={index} className="flex space-x-1">
+                      <input
+                        type="text"
+                        className="border rounded px-2 py-1 flex-grow"
+                        placeholder="Name:"
+                        value={blank.label}
+                        onChange={(event) => {
+                          const newBlanks = [...item.blanks];
+                          console.log(newBlanks);
+                          newBlanks[index].label = event.target.value;
+                          setItem({ ...item, blanks: newBlanks });
+                        }}
+                      />
+                      <select
+                        value={blank.style}
+                        onChange={(event) => {
+                          const newBlanks = [...item.blanks];
+                          newBlanks[index].style = event.target.value as any;
+                          setItem({ ...item, blanks: newBlanks });
+                        }}
+                        className="border rounded px-2 py-1"
+                      >
+                        <option value="line">Line</option>
+                        <option value="box">Box</option>
+                      </select>
+                      <button
+                        className="bg-gray-100 rounded px-2 py-1 hover:bg-gray-200 active:bg-gray-300"
+                        onClick={(event) => {
+                          const newBlanks = [...item.blanks];
+                          newBlanks.splice(index, 1);
+                          setItem({ ...item, blanks: newBlanks });
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  className="bg-gray-100 rounded px-2 py-1 hover:bg-gray-200 active:bg-gray-300"
+                  onClick={(event) => {
+                    const defaults = ["Name", "Date", "Period"];
+                    let defaultLabel = defaults.find(
+                      (label) =>
+                        !item.blanks.some((blank) =>
+                          blank.label
+                            .toLowerCase()
+                            .includes(label.toLowerCase())
+                        )
+                    );
+                    if (defaultLabel) {
+                      defaultLabel += ":";
+                    } else {
+                      defaultLabel = "";
+                    }
+
+                    const defaultStyle =
+                      item.blanks.length === 0
+                        ? "line"
+                        : item.blanks[item.blanks.length - 1].style;
+
+                    const newBlanks = [...item.blanks];
+                    newBlanks.push({
+                      label: defaultLabel,
+                      style: defaultStyle,
+                    });
+                    setItem({ ...item, blanks: newBlanks });
+                  }}
+                >
+                  Add blank
+                </button>
               </div>
             </div>
           }
@@ -941,21 +1026,17 @@ interface AssignmentPreviewProps {
 const AssignmentPreview = forwardRef<HTMLDivElement, AssignmentPreviewProps>(
   function AssignmentPreview({ items }: AssignmentPreviewProps, ref) {
     return (
-      <div style={{ fontFamily: "Roboto", fontSize: "14pt" }} ref={ref}>
-        <Head>
-          <link rel="preconnect" href="https://fonts.gstatic.com" />
-          <link
-            href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,700;1,400;1,700&display=swap"
-            rel="stylesheet"
-          />
-        </Head>
-
+      <div className="font-times" ref={ref}>
         <div className="space-y-8">
           {items.map((item, index) => (
             <div
               key={item.id}
               className="grid grid-cols-5 gap-x-4"
-              style={{ breakInside: "avoid" }}
+              style={{
+                breakInside: ["documentHeader", "question"].includes(item.type)
+                  ? "avoid"
+                  : undefined,
+              }}
             >
               <ItemPreview
                 item={item}
@@ -989,35 +1070,60 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
     case "documentHeader":
       return (
         <>
-          <div className="col-start-1 col-span-3 pb-8">
-            <h1 className="font-bold" style={{ fontSize: "28pt" }}>
+          <div
+            className={classNames({
+              "col-start-1 col-span-3 pb-8": item.layout === "left",
+              "col-span-full text-center": item.layout === "center",
+            })}
+          >
+            <h1
+              className="font-bold leading-tight"
+              style={{ fontSize: "28pt" }}
+            >
               {item.title}
             </h1>
             {item.subtitle && <p>{item.subtitle}</p>}
           </div>
-          {item.nameBlankStyle === "line" && (
-            <div className="col-start-4 col-span-2 pb-8 flex items-baseline space-x-1">
-              {item.nameBlankLabel && (
-                <span className="font-bold whitespace-nowrap">
-                  {item.nameBlankLabel}
-                </span>
-              )}
-              <div className="border-b border-black w-full">&nbsp;</div>
+          <div
+            className={classNames({
+              "col-start-4 col-span-2 space-y-2 pb-8": item.layout === "left",
+              "col-span-full mt-4": item.layout === "center",
+            })}
+          >
+            <div
+              className={classNames({
+                "mx-auto w-64": item.layout === "center",
+              })}
+            >
+              {item.blanks.map((blank, index) => (
+                <Fragment key={index}>
+                  {blank.style === "line" && (
+                    <div className="flex items-baseline space-x-1">
+                      {blank.label && (
+                        <span className="font-bold whitespace-nowrap">
+                          {blank.label}
+                        </span>
+                      )}
+                      <div className="border-b border-black w-full">&nbsp;</div>
+                    </div>
+                  )}
+                  {blank.style === "box" && (
+                    <div>
+                      {blank.label && (
+                        <div>
+                          <span className="font-bold">{blank.label}</span>
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        className="border border-black text-2xl px-2 py-1 w-full"
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              ))}
             </div>
-          )}
-          {item.nameBlankStyle === "box" && (
-            <div className="col-start-4 col-span-2 pb-8">
-              {item.nameBlankLabel && (
-                <div>
-                  <span className="font-bold">{item.nameBlankLabel}</span>
-                </div>
-              )}
-              <input
-                type="text"
-                className="border border-black text-2xl px-2 py-1 w-full"
-              />
-            </div>
-          )}
+          </div>
         </>
       );
     case "question":
@@ -1025,7 +1131,9 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
         <>
           <div className="col-start-1 col-span-3">
             <h6 className="font-bold">Question {getQuestionIndex(item) + 1}</h6>
-            <Markdown>{evaluateStr(item.content)}</Markdown>
+            <div className="prose">
+              <Markdown>{evaluateStr(item.content)}</Markdown>
+            </div>
             <div style={{ height: Number(item.workHeight) }} />
           </div>
 
@@ -1073,13 +1181,13 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
       switch (item.style) {
         case "box":
           return (
-            <div className="col-start-1 col-span-5 border-2 border-black p-4">
+            <div className="prose prose-lg col-start-1 col-span-5 border-2 border-black p-4">
               <Markdown>{evaluateStr(item.content)}</Markdown>
             </div>
           );
         default:
           return (
-            <div className="col-start-1 col-span-5">
+            <div className="prose prose-lg col-start-1 col-span-5">
               <Markdown>{evaluateStr(item.content)}</Markdown>
             </div>
           );
@@ -1181,13 +1289,17 @@ function evaluateExpr(expression: string, context = {}) {
 //   },
 // };
 
-interface MarkdownProps {
+interface MarkdownProps extends ReactMarkdownOptions {
   children: string;
 }
 
-function Markdown({ children }: MarkdownProps) {
+function Markdown({ children, ...props }: MarkdownProps) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex, { plugins: [rehypeKatex], settings: {} }]}
+      {...props}
+    >
       {children}
     </ReactMarkdown>
   );

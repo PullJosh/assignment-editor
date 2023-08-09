@@ -5,15 +5,38 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator pothos {
+  provider    = "prisma-pothos-types"
+  prismaUtils = true
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String     @id @default(uuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  email     String     @unique
+  name      String
+  password  String
+  role      Role       @default(USER)
+  documents Document[]
 }
 
 model Document {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  title     String   @default("Untitled Assignment")
+  userId    String
+  User      User     @relation(fields: [userId], references: [id])
+  title     String   @default("")
   content   Json
 }

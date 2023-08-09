@@ -1,13 +1,40 @@
+"use client";
+
 import Link from "next/link";
+import { AccountMenu } from "./AccountMenu";
+import { useState } from "react";
+import { Dialog } from "@headlessui/react";
+import { FileSelectionList } from "./app/FileSelectionList";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+
+  const router = useRouter();
+
   return (
     <>
       <div className="bg-amber-300 flex h-14">
         <div className="container max-w-4xl mx-auto px-16 flex">
-          <Link href="/" className="font-bold text-lg flex items-center">
+          <Link href="/" className="font-bold text-lg flex items-center pr-4">
             Assignment Editor
           </Link>
+          <div className="flex space-x-2 px-4 self-center border-l border-amber-500 mr-auto">
+            <Link
+              href="/app"
+              className="px-4 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 active:bg-amber-800"
+            >
+              New
+            </Link>
+            <button
+              className="px-4 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 active:bg-amber-800"
+              onClick={() => setLoadModalOpen(true)}
+            >
+              Open
+            </button>
+          </div>
+          <AccountMenu />
         </div>
       </div>
       <div className="bg-amber-100">
@@ -33,6 +60,56 @@ export default function Page() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={loadModalOpen}
+        onClose={() => {
+          setLoadModalOpen(false);
+          setSelectedFileId(null);
+        }}
+        className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50"
+      >
+        <Dialog.Panel className="flex-col bg-white rounded shadow-2xl w-full max-w-md">
+          <div className="p-4">
+            <Dialog.Title className="font-bold text-2xl">
+              Open File
+            </Dialog.Title>
+            <Dialog.Description></Dialog.Description>
+          </div>
+
+          <div className="max-h-[50vh] overflow-y-auto flex-auto">
+            <FileSelectionList
+              selectedId={selectedFileId}
+              onChange={(id) => {
+                setSelectedFileId(id);
+              }}
+            />
+          </div>
+
+          <div className="flex justify-end p-4">
+            <div className="space-x-2">
+              <button
+                className="mr-auto bg-gray-100 px-4 py-2 rounded hover:bg-gray-200 active:bg-gray-300"
+                onClick={() => {
+                  setLoadModalOpen(false);
+                  setSelectedFileId(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="mr-auto bg-amber-600 px-4 py-2 rounded text-white enabled:hover:bg-amber-700 enabled:active:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  router.push(`/app/assignment/${selectedFileId}`);
+                }}
+                disabled={selectedFileId === null}
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        </Dialog.Panel>
+      </Dialog>
     </>
   );
 }
