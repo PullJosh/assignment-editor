@@ -48,8 +48,8 @@ const defaultContent: () => Content = () => {
         id: uuidv4(),
         title: "Homework 1.1",
         subtitle: `Due ${friendlyDateFormat.format(tomorrow)} before class`,
-        nameBlankStyle: "line",
-        nameBlankLabel: "Name:",
+        blanks: [{ label: "Name:", style: "line" }],
+        layout: "left",
       },
       {
         type: "question",
