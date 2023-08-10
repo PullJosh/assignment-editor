@@ -263,6 +263,12 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
 
     const router = useRouter();
 
+    const focusItem = useCallback((id: string) => {
+      (
+        document.querySelector(`#item-${id}-handle`) as HTMLDivElement | null
+      )?.focus();
+    }, []);
+
     return (
       <div className="w-full h-full overflow-hidden grid grid-cols-2 grid-rows-1">
         <div className="overflow-auto min-h-full flex flex-col relative">
@@ -392,7 +398,11 @@ const AssignmentEditor = forwardRef<AssignmentEditorRef, AssignmentEditorProps>(
               transformOrigin: "top left",
             }}
           >
-            <AssignmentPreview ref={printPreview} items={items} />
+            <AssignmentPreview
+              ref={printPreview}
+              items={items}
+              focusItem={focusItem}
+            />
           </div>
         </div>
         <Dialog
@@ -929,6 +939,7 @@ function ItemEditorContainer({
       })}
     >
       <div
+        id={`item-${item.id}-handle`}
         className="bg-gray-100 border-b h-12 flex items-center space-x-2"
         {...handleProps}
       >
@@ -1021,10 +1032,14 @@ function ItemEditorContainer({
 
 interface AssignmentPreviewProps {
   items: Item[];
+  focusItem: (id: string) => void;
 }
 
 const AssignmentPreview = forwardRef<HTMLDivElement, AssignmentPreviewProps>(
-  function AssignmentPreview({ items }: AssignmentPreviewProps, ref) {
+  function AssignmentPreview(
+    { items, focusItem }: AssignmentPreviewProps,
+    ref
+  ) {
     return (
       <div className="font-times" ref={ref}>
         <div className="space-y-8">
@@ -1049,6 +1064,7 @@ const AssignmentPreview = forwardRef<HTMLDivElement, AssignmentPreviewProps>(
                     )
                     .indexOf(item)
                 }
+                focusItem={focusItem}
               />
             </div>
           ))}
@@ -1061,9 +1077,10 @@ const AssignmentPreview = forwardRef<HTMLDivElement, AssignmentPreviewProps>(
 interface ItemPreviewProps {
   item: Item;
   getQuestionIndex: (item: Item) => number;
+  focusItem: (id: string) => void;
 }
 
-function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
+function ItemPreview({ item, getQuestionIndex, focusItem }: ItemPreviewProps) {
   const type = item.type;
 
   switch (type) {
@@ -1075,6 +1092,7 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
               "col-start-1 col-span-3 pb-8": item.layout === "left",
               "col-span-full text-center": item.layout === "center",
             })}
+            onDoubleClick={() => focusItem(item.id)}
           >
             <h1
               className="font-bold leading-tight"
@@ -1089,6 +1107,7 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
               "col-start-4 col-span-2 space-y-2 pb-8": item.layout === "left",
               "col-span-full mt-4": item.layout === "center",
             })}
+            onDoubleClick={() => focusItem(item.id)}
           >
             <div
               className={classNames({
@@ -1129,7 +1148,10 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
     case "question":
       return (
         <>
-          <div className="col-start-1 col-span-3">
+          <div
+            className="col-start-1 col-span-3"
+            onDoubleClick={() => focusItem(item.id)}
+          >
             <h6 className="font-bold">Question {getQuestionIndex(item) + 1}</h6>
             <div className="prose">
               <Markdown>{evaluateStr(item.content)}</Markdown>
@@ -1137,7 +1159,10 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
             <div style={{ height: Number(item.workHeight) }} />
           </div>
 
-          <div className="col-start-4 col-span-2 space-y-2">
+          <div
+            className="col-start-4 col-span-2 space-y-2"
+            onDoubleClick={() => focusItem(item.id)}
+          >
             <h6 className="font-bold flex items-center justify-between">
               <span>Answer {getQuestionIndex(item) + 1}</span>
               {item.starred && (
@@ -1181,13 +1206,19 @@ function ItemPreview({ item, getQuestionIndex }: ItemPreviewProps) {
       switch (item.style) {
         case "box":
           return (
-            <div className="prose prose-lg col-start-1 col-span-5 border-2 border-black p-4">
+            <div
+              className="prose prose-lg col-start-1 col-span-5 border-2 border-black p-4"
+              onDoubleClick={() => focusItem(item.id)}
+            >
               <Markdown>{evaluateStr(item.content)}</Markdown>
             </div>
           );
         default:
           return (
-            <div className="prose prose-lg col-start-1 col-span-5">
+            <div
+              className="prose prose-lg col-start-1 col-span-5"
+              onDoubleClick={() => focusItem(item.id)}
+            >
               <Markdown>{evaluateStr(item.content)}</Markdown>
             </div>
           );

@@ -66,7 +66,7 @@ export function FileSelectionList({
                 // onSelectFile(document.content);
               }}
             >
-              <div className="flex justify-between">
+              <div className="flex justify-between items-baseline">
                 <span className="font-semibold">
                   {document.title || "Untitled Assignment"}
                 </span>
